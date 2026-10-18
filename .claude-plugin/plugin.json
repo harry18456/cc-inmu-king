@@ -1,8 +1,8 @@
 {
   "name": "inmu-king",
   "displayName": "INMU KING",
-  "version": "0.5.0",
-  "description": "A joke mod for Claude Code. Every 淫夢 meme you (or Claude) type lights rainbow letters of T A D O K O R O above the prompt, with a +3 popup and the meme's meaning in English or 繁體中文; eight letters is a burst (a chant, a moving pixel picture, a jingle) and one rank up a chart from #20 to #1. At #1 a pixel crowd dances and Claude ends one reply with やりますねぇ！. A meme collection (梗圖鑑) fills as you go, turn durations become 114514 arithmetic, and your own clips can replace the jingles. Each session plays a game of its own; nothing is saved. /inmu status|burst (demo)|king (demo)|sounds|mute|unmute|reset [all]|band|homo <n>.",
+  "version": "0.6.0",
+  "description": "A joke mod for Claude Code. Every 淫夢 meme you (or Claude) type lights rainbow letters of T A D O K O R O above the prompt, with a +3 popup and the meme's meaning in English or 繁體中文 (in 日本語 the meme stands alone); eight letters is a burst (a chant, a moving pixel picture, a jingle) and one rank up a chart from #20 to #1. At #1 a pixel crowd dances and Claude ends one reply with やりますねぇ！. A meme collection (梗圖鑑) fills as you go, turn durations become 114514 arithmetic, and your own clips can replace the jingles. Each session plays a game of its own; nothing is saved. /inmu status|burst (demo)|king (demo)|sounds|mute|unmute|reset [all]|band|homo <n>.",
   "author": {
     "name": "Harry",
     "url": "https://github.com/harry18456"
@@ -45,8 +45,8 @@
     "language": {
       "type": "string",
       "title": "Language",
-      "description": "The language of the band, the panel, /inmu's replies and the meaning shown beside each meme (the memes stay Japanese). auto follows Claude Code's own language setting (then the system locale), else English.",
-      "options": ["auto", "en", "zh-TW"],
+      "description": "The language of the band, the panel, /inmu's replies and the meaning shown beside each meme (the memes stay Japanese; ja shows them alone). auto follows Claude Code's own language setting (then the system locale), else English.",
+      "options": ["auto", "en", "zh-TW", "ja"],
       "default": "auto"
     }
   }

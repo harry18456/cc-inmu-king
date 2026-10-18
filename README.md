@@ -1,8 +1,10 @@
-English | [繁體中文](README.zh-TW.md)
+English | [繁體中文](README.zh-TW.md) | [日本語](README.ja.md)
 
 # inmu-king
 
-A joke mod for Claude Code. Every 淫夢 (Inmu) meme you type, or Claude types back, lights letters of **T A D O K O R O** in the band above the prompt, each lit letter its own rainbow color, with a "+3 田所浩二 (the internet's name for the Beast Senpai)" beside them for two seconds. The memes stay Japanese and their meanings come along in English or 繁體中文, so you can play without knowing the memes. Eight letters is a *burst*: a classic catchphrase, a moving pixel picture, an 8-bit jingle, and one rank up a chart that starts at #20. Reaching #1 is the *coronation*: a pixel crowd dances, a fanfare plays, and Claude's next reply ends with やりますねぇ！. Every meme you find goes into a collection (梗圖鑑), and the line that closes a turn has its seconds rewritten as arithmetic made of 114514.
+A joke mod for Claude Code. Every 淫夢 (Inmu) meme you type, or Claude types back, lights letters of **T A D O K O R O** in the band above the prompt, each lit letter its own rainbow color, with a "+3 田所浩二 (the internet's name for the Beast Senpai)" beside them for two seconds. The memes stay Japanese and their meanings come along in English or 繁體中文, so you can play without knowing the memes; in 日本語 the memes stand alone. Eight letters is a *burst*: a classic catchphrase, a moving pixel picture, an 8-bit jingle, and one rank up a chart that starts at #20. Reaching #1 is the *coronation*: a pixel crowd dances, a fanfare plays, and Claude's next reply ends with やりますねぇ！. Every meme you find goes into a collection (梗圖鑑), and the line that closes a turn has its seconds rewritten as arithmetic made of 114514.
+
+![Typing 114514 bursts: every letter lights and rainbow digits flash. Claude's reply bursts too, with the crowned beast. Then the coronation: a pixel crowd dances.](docs/burst.gif)
 
 Inspired by *INMU KING*, an AI-generated song released on August 10, 2026, and twenty years of Inmu culture. The mod borrows the song's title only: its chants and titles are catchphrases that predate the song, or lines of the mod's own. The pictures and the sounds are original.
 
@@ -19,7 +21,13 @@ T A D O K O R O  +8 114514 (pun on iiyo koiyo: sure, come on) NEW!     ← a bur
 (three crowned pixel dancers, arms up and down)
 ```
 
+![The band between shows: T A D O lit in rainbow, at #12.](docs/band.png)
+
 Lit letters wear a rainbow, dark ones are gray, and the letters a hit just lit are drawn inverse for two seconds. A burst lights all eight for its show; when the show ends the letters come back as the bar stands, the points past eight already lit. With the band off, the status line under the prompt keeps the standing instead: `Inmu #17 下北沢の新入り (Shimokitazawa rookie) · T A D O K o r o`, upper case lit and lower case dark.
+
+The line that closes a turn, its seconds as 114514 arithmetic:
+
+![Churned for -11+4-5+14 s](docs/turn-line.png)
 
 ## Scoring
 
@@ -54,15 +62,18 @@ From #10 the spinner's word becomes ンアッー, やりますねぇ and friends
 
 ## The collection
 
-A meme goes into the collection the first time it is typed, and its popup says `NEW!`. The panel lists all 33 in five rows by points, each found one with its meaning, the ones not found yet as `???`. The collection lasts as long as the session; `/inmu reset` keeps it and `/inmu reset all` clears it.
+A meme goes into the collection the first time it is typed, and its popup says `NEW!`. The panel lists all 33 in five rows by points, each found one with its meaning (in 日本語, the meme alone), the ones not found yet as `???`. The collection lasts as long as the session; `/inmu reset` keeps it and `/inmu reset all` clears it.
+
+![The panel: the standing, the tallies and the collection, 25 of 33 found.](docs/panel.png)
 
 ## Language
 
 *Language* in `/config` picks the language of the band, the panel, `/inmu`'s replies and the meanings beside the memes:
 
-- `auto` (the default) follows Claude Code's own language setting (`zh-tw`, `Traditional Chinese`, `繁體中文` and the like all read), then the system locale, else English.
+- `auto` (the default) follows Claude Code's own language setting (`zh-tw`, `Traditional Chinese`, `繁體中文`, `ja`, `Japanese`, `日本語` and the like all read), then the system locale, else English.
 - `zh-TW`: Traditional Chinese, as in やりますねぇ（挺行的嘛）.
 - `en`: English, as in やりますねぇ (not bad at all).
+- `ja`: Japanese, the memes alone, as in やりますねぇ.
 
 The memes themselves always stay Japanese.
 
@@ -139,7 +150,7 @@ claude --plugin-dir <path to this repo>
 ## Development
 
 ```
-claude plugin test .           # 111 tests, no network
+claude plugin test .           # 118 tests, no network
 claude plugin validate .
 ```
 

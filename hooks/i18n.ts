@@ -1,24 +1,34 @@
-// Every sentence the person sees, in English and Traditional Chinese, and the
-// meaning shown beside each Japanese line: the memes, the chants, the titles
-// and the mod's own lines. The Japanese stays as it is in both languages: it
-// is the meme. Ids, verbs and file names stay too. No `$` here.
+// Every sentence the person sees, in English, Traditional Chinese and
+// Japanese, and the meaning shown beside each Japanese line in the first two:
+// the memes, the chants, the titles and the mod's own lines. The Japanese
+// stays as it is in every language: it is the meme. In Japanese it needs no
+// meaning beside it. Ids, verbs and file names stay too. No `$` here.
 
 import type { By } from '../types'
 
-export type Lang = 'en' | 'zh-TW'
-export const LANGS: readonly Lang[] = ['en', 'zh-TW']
+export type Lang = 'en' | 'zh-TW' | 'ja'
+export const LANGS: readonly Lang[] = ['en', 'zh-TW', 'ja']
+
+// What names each language, as a code at the start or a name anywhere.
+const LANG_NAMES: ReadonlyArray<readonly [Lang, RegExp]> = [
+  ['zh-TW', /^zh\b|^zh[-_]|chinese|mandarin|中文|漢語|汉语|繁體|繁体|簡體|简体|簡体|中国語|國語|国语/],
+  ['en', /^en\b|^en[-_]|english|英文|英語|英语/],
+  ['ja', /^ja\b|^ja[-_]|japanese|日本語|日本语|日語|日语|にほんご/],
+]
 
 // A language code or a name, as Claude Code's `language` setting and the OS
 // hold it: `zh`, `zh-tw`, `zh_TW.UTF-8`, `Traditional Chinese`, `繁體中文` …
 // → zh-TW (the one Chinese here); `en`, `en_US.UTF-8`, `English` → en;
-// anything else → null.
+// `ja`, `ja_JP.UTF-8`, `Japanese`, `日本語` → ja; anything else → null. The
+// setting is free text: where it names two languages (日本語と英語), the one
+// named first wins.
 export function normalizeLang(raw: unknown): Lang | null {
   if (typeof raw !== 'string') return null
   const v = raw.trim().toLowerCase()
   if (v === '') return null
-  if (/^zh\b|^zh[-_]|chinese|mandarin|中文|漢語|汉语|繁體|繁体|簡體|简体|國語|国语/.test(v)) return 'zh-TW'
-  if (/^en\b|^en[-_]|english|英文|英語|英语/.test(v)) return 'en'
-  return null
+  const named = LANG_NAMES.map(([lang, re]) => ({ lang, at: v.search(re) })).filter(x => x.at >= 0)
+  if (named.length === 0) return null
+  return named.reduce((first, x) => (x.at < first.at ? x : first)).lang
 }
 
 // The language the mod speaks: the setting when it names one, otherwise Claude
@@ -28,8 +38,10 @@ export function pickLang(setting: unknown, claudeLanguage: unknown, envLocale: u
 }
 
 // What each meme means, by its id in lexicon.ts. Short enough for the popup;
-// no brackets inside, since the popup puts the meaning in brackets.
+// no brackets inside, since the popup puts the meaning in brackets. Japanese
+// has none: the meme is its own meaning.
 const MEME_MEANINGS: Readonly<Record<Lang, Readonly<Record<string, string>>>> = {
+  ja: {},
   'zh-TW': {
     '114514': '諧音いいよこいよ＝好啊，來吧',
     '1919810': '諧音イクイク野獣＝去了去了・野獸',
@@ -103,8 +115,10 @@ const MEME_MEANINGS: Readonly<Record<Lang, Readonly<Record<string, string>>>> = 
 }
 
 // What the mod's own Japanese lines mean, keyed by the line as game.ts writes
-// it. An empty meaning: the line reads as it is in that language.
+// it. An empty meaning: the line reads as it is in that language, as every
+// line does in Japanese.
 const LINE_MEANINGS: Readonly<Record<Lang, Readonly<Record<string, string>>>> = {
+  ja: {},
   'zh-TW': {
     // chants
     'いいよ！こいよ！': '好啊！來吧！',
@@ -157,14 +171,15 @@ const LINE_MEANINGS: Readonly<Record<Lang, Readonly<Record<string, string>>>> = 
 export const memeMeaning = (lang: Lang, id: string): string => MEME_MEANINGS[lang][id] ?? ''
 export const lineMeaning = (lang: Lang, line: string): string => LINE_MEANINGS[lang][line] ?? ''
 
-// The tables, for the test that every line has a meaning in every language.
+// The tables, for the test that every line has a meaning in every language
+// that glosses the Japanese, and none in Japanese.
 export const meaningKeys = (lang: Lang) => ({ memes: Object.keys(MEME_MEANINGS[lang]), lines: Object.keys(LINE_MEANINGS[lang]) })
 
 // "やりますねぇ（挺行的嘛）" in Chinese, "やりますねぇ (not bad at all)" in English;
-// the text alone when there is no meaning.
+// the text alone when there is no meaning, as always in Japanese.
 export function glossed(lang: Lang, text: string, meaning: string): string {
   if (meaning === '') return text
-  return lang === 'zh-TW' ? `${text}（${meaning}）` : `${text} (${meaning})`
+  return lang === 'en' ? `${text} (${meaning})` : `${text}（${meaning}）`
 }
 
 export const VERBS = 'status|burst|king|sounds|mute|unmute|reset [all]|band on|off|homo <n>'
@@ -311,4 +326,50 @@ const zhTW: Strings = {
   turnLine: (word, seconds, tokens) => `${word} ${seconds} 秒${tokens === null ? '' : ` · 輸出 ${tokens} tokens`}`,
 }
 
-export const STRINGS: Readonly<Record<Lang, Strings>> = { en, 'zh-TW': zhTW }
+// The memes are 淫夢語録 here, the collection their 図鑑.
+const ja: Strings = {
+  commandDescription: '淫夢の王：順位、バーストと戴冠のデモ、音声、ミュート、リセット',
+  list: items => items.join('、'),
+  groups: items => items.join('／'),
+  alias: (id, label) => `${id}＝${label}`,
+  status: (rank, title, letters) => `淫夢 #${rank} ${title} · ${letters}`,
+  standing: (rank, title, letters, energy) => `淫夢 #${rank} ${title} · ${letters} (${energy}/8)`,
+  tallies: (crowned, total, sins, found, all, sound) =>
+    `戴冠 ${crowned} 回 · 累計 ${total} 点 · 罪 ${sins} · 図鑑 ${found}/${all} · 音 ${sound}`,
+  sound: (muted, on) => (muted ? 'ミュート中' : on ? 'オン' : 'オフ'),
+  recent: items => `最近：${items.join('、')}`,
+  noMemesYet: 'まだ語録がありません。114514 と打ってみてください。',
+  panelOpened: 'パネルを開きました。数字キーでボタンを押せます。Esc で閉じます。',
+  demoBurst: 'バーストのデモです。得点も順位も変わりません。',
+  demoCrown: '戴冠のデモです。順位は変わらず、次の返答もいつもどおりです。',
+  muted: 'ミュートしました。',
+  unmuted: 'ミュートを解除しました。',
+  reset: 'リセットしました：#20、文字はすべて消灯、累計はクリア。図鑑は残ります。図鑑も消すなら /inmu reset all。',
+  resetAll: 'すべてリセットしました：#20、文字はすべて消灯、累計と図鑑もクリア。',
+  bandUsage: '使い方：/inmu band on|off',
+  bandShown: 'band を表示しました。',
+  bandHidden: 'band を非表示にしました（/inmu band on で戻ります）。',
+  homoUsage: '使い方：/inmu homo <整数>',
+  unknownVerb: verb => `「${verb}」というコマンドはありません。使えるもの：${VERBS}`,
+  soundFolder: path => `音声フォルダ：${path}`,
+  noHome: 'ホームフォルダが見つかりません。/config の Your sound folder を設定してください',
+  folderMissing: 'このフォルダはまだありません。作成して音声を入れたら、/inmu sounds を実行してください。',
+  noClips: 'フォルダには、名前で認識できる音声がまだありません。',
+  placed: list => `認識した音声：${list}`,
+  unplaced: list => `認識できないファイル名：${list}`,
+  events: 'イベント：hit 得点、burst バースト、crown 戴冠、sin 罪',
+  memes: list => `語録：${list}`,
+  howToName: 'ファイル名は、イベント名・語録の id・語録の文字のどれでも構いません。同じ名前に -2、-3 を付けると複数置けて、順番に再生されます。形式：wav、mp3、m4a、wma、aac。',
+  paneTallies: (crowned, total, sins, muted) => `戴冠 ${crowned} 回 · 累計 ${total} 点 · 罪 ${sins}${muted ? ' · ミュート中' : ''}`,
+  collection: (found, all) => `語録図鑑 ${found}/${all}`,
+  tier: (points, items) => `${points}点 ${items}`,
+  who: by => (by === 'you' ? 'あなた' : by === 'claude' ? 'Claude' : '時計'),
+  muteButton: muted => (muted ? 'ミュート解除' : 'ミュート'),
+  resetButton: 'リセット',
+  closeButton: '閉じる',
+  bandButton: 'パネル',
+  sinToast: (line, sins) => `${line} · 罪 ${sins}`,
+  turnLine: (word, seconds, tokens) => `${word} ${seconds} 秒${tokens === null ? '' : ` · 出力 ${tokens} トークン`}`,
+}
+
+export const STRINGS: Readonly<Record<Lang, Strings>> = { en, 'zh-TW': zhTW, ja }

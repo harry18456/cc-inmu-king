@@ -716,10 +716,58 @@ test('English: the band, the popup and the replies speak English, and the memes 
   expect(w.statuses.at(-1)).toBe('Inmu #20 下北沢の新入り (Shimokitazawa rookie) · T A d o k o r o')
 })
 
+test('Japanese: the memes and the titles stand alone, and the band, the panel and the replies speak Japanese', async ($, on) => {
+  const w = world(on, { settings: { language: '日本語' } })
+  await start($)
+  const band = await mountBand($)
+  // What the band says past its eight letters.
+  const words = async () => (await band.findAll({ type: 'Text' })).slice(8).map((t: any) => t.text)
+  expect(await words()).toEqual(['#20 下北沢の新入り', 'under the band'])
+  expect((await band.find({ key: 'pane' }))?.props.label).toBe('パネル')
+  await submit($, 'やりますねぇ')
+  expect(await textOf(band, /^\+2 /)).toBe('+2 やりますねぇ NEW!')
+  await submit($, '114514')
+  expect(await words()).toEqual(['+8 114514 NEW!', 'いいよ！こいよ！', 'under the band'])
+  expect(w.toasts.at(-1)).toBe('いいよ！こいよ！')
+  const text = (await inmu($)).text
+  expect(text).toContain('淫夢 #19 下北沢の新入り · T A d o k o r o (2/8)')
+  expect(text).toContain('戴冠 0 回')
+  expect(text).toContain('図鑑 2/33')
+  const pane = await mountPane($)
+  expect(await textOf(pane, /^語録図鑑/)).toBe('語録図鑑 2/33')
+  expect(await textOf(pane, /^8点 /)).toBe('8点 114514  ???')
+  expect(await textOf(pane, /^最近：/)).toBe('最近：あなた 114514+8、あなた やりますねぇ+2')
+  expect((await inmu($, 'burst')).text).toBe('バーストのデモです。得点も順位も変わりません。')
+  await inmu($, 'band off')
+  expect(w.statuses.at(-1)).toBe('淫夢 #19 下北沢の新入り · T A d o k o r o')
+})
+
+test('Japanese: the coronation, a sin and the turn line come without a meaning beside them', async ($, on) => {
+  const w = world(on, { settings: { language: 'ja' } })
+  await start($)
+  await climbToTwo($, w)
+  await submit($, '114514')
+  expect(w.toasts).toContain('新たな淫夢の王が誕生した')
+  await inmu($, 'band off')
+  expect(w.statuses.at(-1)).toBe('👑 淫夢の王 INMU KING')
+  await $.tool.call({ tool: 'Bash', command: 'boom' })
+  expect(w.toasts.at(-1)).toBe('罪がまた一つ増えた · 罪 1')
+  const usage = { input_tokens: 10, output_tokens: 810, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, model: 'm' }
+  await $.turn.complete({ turnId: 't1', answer: 'ok', durationMs: 20_000, isAborted: false, reason: 'answer', usage })
+  const line = await $.ui.mount({ plugin: 'inmu-king', surface: 'terminal', component: 'TurnDuration', props: { word: 'Baked', durationMs: 20_000 } })
+  expect(await textOf(line, /Baked/)).toMatch(/^Baked [-+*/()1451]+ 秒 · 出力 [-+*/()1451]+ トークン$/)
+})
+
 test("the language setting outranks Claude Code's own", { options: { language: 'en' } }, async ($, on) => {
   world(on, { settings: { language: 'zh-tw' } })
   await start($)
   expect((await inmu($, 'nope')).text).toContain('Unknown "nope"')
+})
+
+test('the ja setting speaks Japanese where Claude Code speaks Chinese', { options: { language: 'ja' } }, async ($, on) => {
+  world(on, { settings: { language: 'zh-tw' } })
+  await start($)
+  expect((await inmu($, 'nope')).text).toContain('「nope」というコマンドはありません')
 })
 
 test('the locale decides when neither the setting nor Claude Code names a language', async ($, on) => {
