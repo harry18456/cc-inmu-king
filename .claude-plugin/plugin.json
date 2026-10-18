@@ -1,0 +1,53 @@
+{
+  "name": "inmu-king",
+  "displayName": "INMU KING",
+  "version": "0.4.0",
+  "description": "A joke mod for Claude Code. Every 淫夢 meme you (or Claude) type lights rainbow letters of T A D O K O R O above the prompt, with a +3 popup and the meme's meaning in English or 繁體中文; eight letters is a burst (a chant, a moving pixel picture, a jingle) and one rank up a chart from #20 to #1. At #1 a pixel crowd dances and Claude ends one reply with やりますねぇ！. A meme collection (梗圖鑑) fills as you go, turn durations become 114514 arithmetic, and your own clips can replace the jingles. /inmu status|burst (demo)|king (demo)|sounds|mute|unmute|reset [all]|band|homo <n>.",
+  "author": {
+    "name": "Harry",
+    "url": "https://github.com/harry18456"
+  },
+  "homepage": "https://github.com/harry18456/cc-inmu-king",
+  "repository": "https://github.com/harry18456/cc-inmu-king",
+  "license": "MIT",
+  "keywords": ["inmu", "114514", "yajuu-senpai", "inmu-king", "meme", "joke", "band", "raster", "sound", "mod", "claude-code"],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "sound": {
+      "type": "boolean",
+      "title": "Sound effects",
+      "description": "A blip on a hit, a jingle on a burst, a fanfare at the coronation, a sigh on a sin: the mod's own 8-bit sounds, or your clips from the sound folder. Windows plays them through PowerShell, macOS through Claude Code; other platforms stay silent.",
+      "default": true
+    },
+    "sounds_dir": {
+      "type": "string",
+      "title": "Your sound folder",
+      "description": "Where your own clips live (wav, mp3, m4a, wma, aac), named for an event (hit, burst, crown, sin) or a meme (iiyo.mp3, やりますねぇ.mp3). Empty: ~/.claude/inmu-king/sounds. /inmu sounds lists what it found."
+    },
+    "infect": {
+      "type": "boolean",
+      "title": "Infect Claude at #1",
+      "description": "The reply right after a coronation ends with やりますねぇ！ (one extra system-prompt section for that turn; it rebuilds the prompt cache once). Never in -p or SDK sessions. The section asks Claude to skip the line when you asked for an exact output such as JSON only: a request to the model, not a guarantee.",
+      "default": true
+    },
+    "claude_counts": {
+      "type": "boolean",
+      "title": "Claude's replies count too",
+      "description": "Memes in Claude's own reply light letters at half points.",
+      "default": true
+    },
+    "band": {
+      "type": "boolean",
+      "title": "Show the band",
+      "description": "The T A D O K O R O letters above the prompt. Off hides them, and the standing shows in the status line under the prompt instead; /inmu band on|off changes it for the session.",
+      "default": true
+    },
+    "language": {
+      "type": "string",
+      "title": "Language",
+      "description": "The language of the band, the panel, /inmu's replies and the meaning shown beside each meme (the memes stay Japanese). auto follows Claude Code's own language setting (then the system locale), else English.",
+      "options": ["auto", "en", "zh-TW"],
+      "default": "auto"
+    }
+  }
+}
