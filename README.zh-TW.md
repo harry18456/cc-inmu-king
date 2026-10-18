@@ -35,8 +35,8 @@ T A D O K O R O  +8 114514（諧音いいよこいよ＝好啊，來吧） NEW! 
 - 全形數字、半形片假名照算：`１１４５１４`、`ｲｷｽｷﾞ`。分成幾段的梗，段與段之間可以有空白或標點：`いいよ、来いよ`、`いいよ・こいよ`、`見ろよ 見ろよ`。日文日常用語不算：`サインアップ`、`ファッション`、沒有ぇ的「やりますね」。
 - 同一段文字裡每個梗只算一次，一段最多亮兩輪，也就是 16 分。
 - Claude 自己的回覆也算，但只有一半分數，無條件進位。被中斷的回覆和子 agent 的回覆不算。可在設定關掉。
-- 工具出錯或被拒是一次「罪」：第一次與每第五次會 toast 一句，並播一段嘆氣音效。罪只算這個 session 的。
-- 所有 session 共用一張排行榜：分數加在一起，每個 session 的爆發都會往上推一名。
+- 工具出錯或被拒是一次「罪」：第一次與每第五次會 toast 一句，並播一段嘆氣音效。
+- 每個 session 各玩各的：從 #20 開始（8 月 10 日則一開始就加冕），分數、加冕次數與圖鑑只在這個 session 內有效（熱重載、改設定都不會歸零），下一個 session 重新開始。
 
 ## 稱號階梯
 
@@ -53,7 +53,7 @@ T A D O K O R O  +8 114514（諧音いいよこいよ＝好啊，來吧） NEW! 
 
 ## 梗圖鑑
 
-每個梗第一次被打出來就收進圖鑑，得分提示會標 `NEW!`。面板依分數分五排列出全部 33 個梗，找到的會附上意思，還沒找到的顯示 `???`。圖鑑跨 session 保留；`/inmu reset` 不清圖鑑，`/inmu reset all` 才會清。
+每個梗第一次被打出來就收進圖鑑，得分提示會標 `NEW!`。面板依分數分五排列出全部 33 個梗，找到的會附上意思，還沒找到的顯示 `???`。圖鑑只在這個 session 內有效；`/inmu reset` 不清圖鑑，`/inmu reset all` 才會清。
 
 ## 語言
 
@@ -92,8 +92,8 @@ macOS：  ~/.claude/inmu-king/sounds/
 
 ## 時間梗
 
-- 每天 **11:45:14**：自動加 3 分，toast「淫夢時間」。
-- **8 月 10 日**，野獣の日：當天第一個開的 session 讓排行榜直接到 #1，每個 session 都一樣，算一次加冕。它需要讀得到存檔；讀不到時，當天下一次開 session 會再試。
+- 每天 **11:45:14**：自動加 3 分，toast「淫夢時間」；當時開著的每個 session 各一次。
+- **8 月 10 日**，野獣の日：當天每個 session 一開始就加冕。
 
 ## 指令
 
@@ -103,7 +103,7 @@ macOS：  ~/.claude/inmu-king/sounds/
 /inmu king         示範加冕：只播畫面和音效，不改排名，Claude 也不會被感染
 /inmu sounds       重新掃描你的音檔資料夾並列出結果
 /inmu mute|unmute  這個 session 靜音／開聲音
-/inmu reset        歸零：第 20 名、字母全暗、累計清空，每個 session 都一起；圖鑑保留
+/inmu reset        歸零：第 20 名、字母全暗、累計清空，圖鑑保留
 /inmu reset all    連圖鑑一起清
 /inmu band on|off  顯示／隱藏 band（隱藏時，名次改顯示在狀態列）
 /inmu homo 1919    把數字寫成 114514 算式
@@ -138,25 +138,19 @@ claude --plugin-dir <這個 repo 的路徑>
 ## 開發
 
 ```
-claude plugin test .           # 160 個測試，不連網
+claude plugin test .           # 111 個測試，不連網
 claude plugin validate .
-uv run tools/store_check.py    # 兩個 headless session 同時寫同一個 plugin store；不呼叫模型
 ```
 
 `tsc` 需要 Claude Code 載入 mod 時寫進 `.claude-plugin/types/` 的型別檔（git 不追蹤）：先跑一次 `claude --plugin-dir .` 再離開，然後 `npx -p typescript tsc --noEmit -p .`。
 
-同一個 session 載入兩次 mod 時，會有兩份同時在跑，每一份都會替同一個梗計分。這發生在「session 開始時已經載入，之後又熱重載加進來」的情況；遇到時請重開 session，不要熱重載。
+同一個 session 載入兩次 mod 時，會有兩份同時在跑，各玩各的，也會畫出兩條 band。這發生在「session 開始時已經載入，之後又熱重載加進來」的情況；遇到時請重開 session，不要熱重載。
 
 ## 它做了什麼、沒做什麼
 
 - 只讀你送出的 prompt 與 Claude 的回覆做字串比對。不改 prompt、不連網、不呼叫模型。
 - 唯一會進到模型的是「加冕回覆」那一段 system prompt，可以關掉。
-- 名次、累計分數、加冕次數與圖鑑存在 Claude Code 的 plugin store，下次 session 接著算。字母、罪與面板狀態只在這個 session 內。每個 session 只寫自己的鍵，讀的時候把所有 session 的加起來（[`hooks/ledger.ts`](hooks/ledger.ts)），所以不會互相蓋掉。這建立在「store 每次寫入只改那一個鍵、其他鍵保留」上；`tools/store_check.py` 會在你的 Claude Code 上檢查這一點。在 2.1.302 上，兩個 session 各寫 400 個鍵、同時寫了 18 秒：store 收下 786 筆、拒絕 14 筆，收下的一筆都沒掉。
-- store 拒絕寫入時（另一個 session 正拿著鎖、或 store 滿了），會先立刻重試，之後每 15 秒再試；這段期間 band 顯示「未存」，並跳一次 toast 說明。完全讀不到 store 的 session，得分會先留著不存，等讀得到再存。Claude Code 結束時還沒存進去的進度會遺失。
-- 歸零會在每個 session 下一次得分、打 `/inmu` 或回覆結束時生效。別的 session 歸零那一刻正在處理的得分，可能算在歸零之前，跟著被清掉。
-- 加冕次數照同一張排行榜算：每一次落在 #1 的爆發算一次，不管是哪個 session 打的。兩個 session 一起衝上 #1 時，由「爆發可能是最後一擊」的那個 session 在重讀存檔後播加冕畫面；重讀失敗時，改由之後任何一個 session 在 #1 的下一次爆發來播。兩邊在同一個幾毫秒內越過 #1 時，兩邊都可能播，但只算一次。
-- store 最多 4 MiB，大約可放 8 萬筆進度紀錄，每個得過分的 session 一筆。歸零時和每個 session 開始時都會刪舊紀錄，一次最多 200 筆。store 已經滿了的話，歸零也寫不進去；這時刪掉存檔 `~/.claude/plugins/store/inmu-king*.json` 就會從頭開始。
-- 從 0.3.0 升級時，名次、累計分數、加冕次數與圖鑑會搬過來一次。store 暫時寫不進去時，會像一般存檔一樣重試，寫進去之前 band 顯示「未存」。罪的次數不保留。
+- 不存任何東西：遊戲只在這個 session 內，Claude Code 的 plugin store 完全不讀也不寫。舊版留下的存檔（`~/.claude/plugins/store/inmu-king*.json`）會原封不動地留著、不會被讀；想刪可以自己刪。
 - 別的 mod 也在這裡畫 band 時，它的內容會疊在這條 band 下面。Claude Code 顯示自己的意見問卷時，整條 band 會讓位。
 - Windows 的音效由 PowerShell 播放，每次約 1 秒才出聲，在背景跑，不擋回合。
 - 像素圖只在終端機畫；Desktop 上只顯示文字。

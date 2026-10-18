@@ -5,13 +5,9 @@ import { KNOWN_IDS, LEXICON, detect, type Entry, type Hit } from './lexicon.ts'
 import {
   CROWN_CHANT, CROWN_TOAST, FULL, LETTERS, LETTER_COLORS, LONG_TURN_MS, LONG_TURN_WORD, RANK_START, RANK_TOP, TIME_LINE, YAJUU_DAY_LINE,
   applyPoints, artFor, chantFor, initialGame, letterStates, lettersLine, logItem,
-  popText, remember, sinLine, sinSpeaks, spinWord, titleFor, toStats, type LetterState,
+  popText, remember, sinLine, sinSpeaks, spinWord, titleFor, toGame, type LetterState,
 } from './game.ts'
 import { STRINGS, VERBS, glossed, lineMeaning, memeMeaning, pickLang, type Lang, type Strings } from './i18n.ts'
-import {
-  LEGACY_COPY, NO_PROGRESS, add, coronations, crownsFrom, crownsOwed, dayCopy, emptyLedger, foundKey, isEmpty, legacyKeys, liftToTop,
-  nextResetMs, progressKey, rankOf, readLedger, resetKey, staleKeys, type Ledger, type Progress,
-} from './ledger.ts'
 import { homo } from './homo.ts'
 import { BEAST_FRAMES, CROWD_FRAMES, DIGITS_BIG, DIGITS_SMALL, TEA_FRAMES, type Picture } from './pixels.ts'
 import { buildLibrary, joinPath, mimeOf, playlist, psScript, winPath, type Clip, type Library, type SoundEvent } from './sounds.ts'
@@ -35,10 +31,9 @@ import { buildLibrary, joinPath, mimeOf, playlist, psScript, winPath, type Clip,
 // one folder (sounds.ts says how they are named); Windows plays them through
 // PowerShell, macOS through $.audio, other platforms stay silent.
 //
-// The game lives in $.state (a hot reload keeps it). The progress and the
-// collection live in $.store as key names (ledger.ts): every copy of the mod
-// writes keys of its own, and a reading adds up every session's, so the next
-// session carries on and no session writes over another. Every change goes
+// A session plays a game of its own. The game lives in $.state (a hot
+// reload or a settings change keeps it); nothing goes to the plugin store,
+// and the next session starts over at #20. Every change to the game goes
 // through `serially`, one at a time.
 
 const PANE = 'inmu'
@@ -46,18 +41,8 @@ const BURST_MS = 3000
 const CROWN_MS = 6000
 const POP_MS = 2000
 const STEP_MS: Readonly<Record<Art, number>> = { beast: 300, tea: 300, digits: 200, crowd: 250 }
-const STATS_KEY = 'stats'
-const MIGRATED_KEY = 'migrated'
-const OLD_KEYS = ['rank', 'bestRank', 'totalPoints', 'coronations', 'sins', 'bursts'] as const
-const CLOCK_DAY_KEY = 'clockDay'
-const YAJUU_YEAR_KEY = 'yajuuYear'
 const TIERS = [8, 5, 3, 2, 1] as const
 const TURNS_KEPT = 32
-// A write the store refuses is tried this many times at once; a pending save
-// is tried again this often; a sweep deletes at most this many keys.
-const SET_TRIES = 3
-const RETRY_MS = 15_000
-const SWEEP_MAX = 200
 
 const SECTION_ID = 'inmu-king:coronation'
 const CORONATION_SECTION = [
@@ -68,13 +53,11 @@ const CORONATION_SECTION = [
 ].join(' ')
 
 // Host state: the game, what the band shows instead of the letters, the hit
-// popup, the band's own hide switch, and whether a save is pending. A read
-// while drawing subscribes it.
+// popup, and the band's own hide switch. A read while drawing subscribes it.
 const game = atom({ plugin: 'inmu-king', key: 'game' } as const, initialGame())
 const fx = atom({ plugin: 'inmu-king', key: 'fx' } as const, null)
 const pop = atom({ plugin: 'inmu-king', key: 'pop' } as const, null)
 const bandHidden = atom({ plugin: 'inmu-king', key: 'bandHidden' } as const, false)
-const unsavedShown = atom({ plugin: 'inmu-king', key: 'unsaved' } as const, false)
 
 type Timer = { cancel: () => void } | null
 
@@ -106,28 +89,6 @@ let demoTurn = 0
 let composedWithSection = false
 let turnCarriesSection = false
 let mainTurnRunning = false
-// This copy of the mod in the store (ledger.ts): its id, when it started, the
-// store as it last read it, whether it has read it yet, the generation it
-// plays in, its progress there and the key that progress was last saved
-// under, the finds not written yet, and whether a save is pending. A hot
-// reload starts a new copy; the old one's record stays and keeps counting.
-// The id starts with c, so it is never a record's of no copy (legacy, day…).
-const COPY = `c${Math.random().toString(36).slice(2, 10)}`
-let startedAt = 0
-let ledger: Ledger = emptyLedger()
-let joined = false
-let mineGen = 0
-let mine: Progress = NO_PROGRESS
-let mineKey: string | null = null
-const unsavedFinds = new Set<string>()
-let unsaved = false
-let warnedUnsaved = false
-let retryTimer: Timer = null
-let sweeping = false
-// Whether 0.3.0's store still waits to be carried over, and an August 10
-// lift the store has not taken yet.
-let legacyPending = true
-let unsavedDay: { key: string; gen: number } | null = null
 // Each turn's output tokens by its duration: the turn line carries no turn id.
 const tokensByDuration = new Map<number, number>()
 let queue: Promise<unknown> = Promise.resolve()
@@ -142,8 +103,7 @@ const bandOn = () => flag(opts.band, true)
 const glossLine = (line: string) => glossed(lang, line, lineMeaning(lang, line))
 const glossMeme = (hit: { id?: string; label: string }) => glossed(lang, hit.label, hit.id === undefined ? '' : memeMeaning(lang, hit.id))
 
-// One change to the game or the tallies at a time: each reads what the one
-// before it wrote. Hooks and buttons call it; nothing inside it does, so it
+// One change to the game at a time: each reads what the one before it wrote. Hooks and buttons call it; nothing inside it does, so it
 // never waits on itself.
 function serially<T>(work: () => Promise<T>): Promise<T> {
   const run = queue.then(work, work)
@@ -154,28 +114,22 @@ function serially<T>(work: () => Promise<T>): Promise<T> {
 // `claude plugin validate` only lets `$` flow into top-level function
 // declarations of this file, so every helper that takes `$` lives here.
 
+// The game as the host state holds it, and every change to it: an older
+// version's game (a hot reload keeps the state) gets what it lacks first.
 async function readGame($: any): Promise<Game> {
   try {
-    return await read($, game)
+    return toGame(await read($, game))
   } catch {
     return initialGame()
   }
 }
 
-// Every session's progress in this generation: the other copies as last
-// read, this copy as it stands.
-function standing(): Progress {
-  let total = mine
-  for (const [copy, p] of ledger.copies) {
-    if (copy !== COPY) total = add(total, p)
-  }
-  return total
+async function updateGame($: any, fn: (x: Game) => Game): Promise<void> {
+  await update($, game, x => fn(toGame(x)))
 }
 
-const foundCount = () => LEXICON.filter(entry => ledger.found.has(entry.id)).length
-
-// The coronations every session's progress makes (ledger.ts counts them).
-const crownCount = () => coronations(standing(), ledger.copies.get(LEGACY_COPY))
+// How many memes of the collection the session has found.
+const foundCount = (g: Game) => LEXICON.filter(entry => g.found.includes(entry.id)).length
 
 // The host's clock, or the module's own when the host's is away.
 async function clockNow($: any): Promise<number> {
@@ -184,230 +138,6 @@ async function clockNow($: any): Promise<number> {
   } catch {
     return Date.now()
   }
-}
-
-// Reads every key at once and follows what changed: other sessions' progress
-// and finds, and a reset made elsewhere (any other generation: a newer one,
-// or an older one when the store was cleared), which starts this copy's
-// progress over in it (what it had not saved belonged to the old one) and
-// takes the game back to the start. The first reading joins: what this copy
-// made before it counts in the generation it finds, unless that generation
-// began after this copy started (the store could not be read till now, and a
-// reset came meanwhile). The game's rank and the status line follow every
-// session's progress; a pending save gets its next try. False when the store
-// cannot be read: the last reading stands. Runs inside `serially`.
-async function refresh($: any): Promise<boolean> {
-  let keys: string[]
-  try {
-    keys = await $.store.keys()
-  } catch {
-    // The old store waits for a reading: the band says so, and the timer tries again.
-    if (legacyPending) await markUnsaved($, true)
-    return false
-  }
-  // The old store comes over first, so this reading counts it (as much of
-  // it as the store took), and an August 10 lift the store has not taken yet
-  // counts as well.
-  if (legacyPending) keys = [...keys, ...(await carryLegacy($, keys, readLedger(keys).gen))]
-  if (unsavedDay !== null) keys = [...keys, unsavedDay.key]
-  const next = readLedger(keys)
-  const isReset = joined ? next.gen !== mineGen : next.gen > startedAt
-  const findsReset = joined ? next.foundGen !== ledger.foundGen : next.foundGen > startedAt
-  if (findsReset) unsavedFinds.clear()
-  for (const meme of unsavedFinds) next.found.add(meme)
-  ledger = next
-  joined = true
-  mineGen = next.gen
-  if (isReset) mine = NO_PROGRESS
-  const rank = rankOf(standing())
-  let moved = null as Game | null
-  try {
-    await update($, game, x => {
-      const g = isReset ? { ...initialGame(rank), muted: x.muted } : x.rank === rank ? x : { ...x, rank }
-      moved = g === x ? null : g
-      return g
-    })
-  } catch { /* no host state here */ }
-  if (moved !== null) status($, moved)
-  if (unsaved || legacyPending) await save($)
-  return true
-}
-
-// Sets a key (a ledger key's value is `true`). The store refuses a write
-// while another session holds its lock ("Lock file is already being held"),
-// so a refused one is tried again at once, a few times, before it counts as
-// failed.
-async function setKey($: any, key: string, value: unknown = true): Promise<void> {
-  for (let tries = 1; ; tries++) {
-    try {
-      await $.store.set(key, value)
-      return
-    } catch (err) {
-      if (tries >= SET_TRIES) throw err
-    }
-  }
-}
-
-// Writes this copy's progress under its next key, then deletes the key before
-// it, and every find not written yet. A key holds the whole progress, so the
-// next write carries whatever one that failed did not; a failure leaves the
-// save pending (`markUnsaved`), and so does an old store not carried over
-// yet. Before its first reading this copy does not know the generation, so
-// the save waits for that reading. Runs inside `serially`.
-async function save($: any): Promise<void> {
-  if (!joined) {
-    await markUnsaved($, true)
-    return
-  }
-  let failed = false
-  const key = isEmpty(mine) ? null : progressKey(mineGen, COPY, mine)
-  if (key !== null && key !== mineKey) {
-    try {
-      await setKey($, key)
-      const before = mineKey
-      mineKey = key
-      if (before !== null) {
-        try {
-          await $.store.delete(before)
-        } catch { /* a key left behind counts nothing twice; a sweep takes it */ }
-      }
-    } catch {
-      failed = true
-    }
-  }
-  for (const meme of [...unsavedFinds]) {
-    try {
-      await setKey($, foundKey(ledger.foundGen, meme))
-      unsavedFinds.delete(meme)
-    } catch {
-      failed = true
-      break
-    }
-  }
-  // August 10's lift, while its generation lasts.
-  if (unsavedDay !== null && unsavedDay.gen !== mineGen) unsavedDay = null
-  if (unsavedDay !== null) {
-    try {
-      await setKey($, unsavedDay.key)
-      unsavedDay = null
-    } catch {
-      failed = true
-    }
-  }
-  await markUnsaved($, failed || legacyPending)
-}
-
-// A save pending: the band says so, the session's first one toasts, and a
-// timer reads the store again every 15 s (which saves) until a save lands.
-async function markUnsaved($: any, pending: boolean): Promise<void> {
-  if (pending) {
-    if (!warnedUnsaved) {
-      warnedUnsaved = true
-      toast($, s.saveFailed, 6000)
-    }
-    if (retryTimer === null) retryTimer = $.clock.every(RETRY_MS, () => { void serially(() => refresh($)) })
-  } else {
-    retryTimer?.cancel()
-    retryTimer = null
-  }
-  if (pending === unsaved) return
-  unsaved = pending
-  try {
-    await update($, unsavedShown, () => pending)
-  } catch { /* no host state here */ }
-}
-
-// Deletes what no reading counts any more (ledger.ts says which), a few
-// hundred keys at a time. It runs beside the queue, not in it, so a prompt
-// never waits for it: a key it judges stale stays stale, and no write of
-// this copy's needs one. A copy a step behind may write an old key again;
-// the next sweep takes it.
-async function sweep($: any): Promise<void> {
-  if (sweeping) return
-  sweeping = true
-  try {
-    let keys: string[]
-    try {
-      keys = await $.store.keys()
-    } catch {
-      return
-    }
-    for (const key of staleKeys(keys).slice(0, SWEEP_MAX)) {
-      try {
-        await $.store.delete(key)
-      } catch {
-        return
-      }
-    }
-  } finally {
-    sweeping = false
-  }
-}
-
-// 0.1.0 kept one key per number: they fold into one key, `stats`, and are
-// never read again (a 0.1.0 copy still running somewhere keeps writing them).
-// False when the store failed it. Runs inside `serially`.
-async function migrate($: any): Promise<boolean> {
-  try {
-    if ((await $.store.get(STATS_KEY)) !== undefined || (await $.store.get(MIGRATED_KEY)) === true) return true
-    const old: Record<string, unknown> = {}
-    let isOld = false
-    for (const key of OLD_KEYS) {
-      const v = await $.store.get(key)
-      if (v !== undefined) {
-        old[key] = v
-        isOld = true
-      }
-    }
-    if (isOld) await setKey($, STATS_KEY, toStats(old))
-    await setKey($, MIGRATED_KEY, true)
-    if (!isOld) return true
-    for (const key of OLD_KEYS) {
-      try {
-        await $.store.delete(key)
-      } catch { /* gone already */ }
-    }
-    return true
-  } catch {
-    return false
-  }
-}
-
-// 0.3.0 kept the rank, the tallies and the collection in one key, `stats`
-// (0.1.0's keys fold into it first): they become ledger keys of their own,
-// the `legacy` record and its finds. It stays pending until the store takes
-// every one of them, and each reading tries again. The same stats make the
-// same keys, so every copy may write them; a legacy record already there is
-// not written again, and of two a reading takes one whole snapshot. Before
-// the first reset only: after it the old store is history. Returns the keys
-// it wrote, all of them or as far as the store took them. Runs inside
-// `serially`.
-async function carryLegacy($: any, keys: readonly string[], gen: number): Promise<string[]> {
-  if (gen !== 0) {
-    legacyPending = false
-    return []
-  }
-  if (!(await migrate($))) return []
-  let raw: unknown
-  try {
-    raw = await $.store.get(STATS_KEY)
-  } catch {
-    return []
-  }
-  const have = new Set(keys)
-  const written = keys.some(key => key.startsWith(`r:0:${LEGACY_COPY}:`))
-  const missing = raw === undefined ? [] : legacyKeys(toStats(raw), KNOWN_IDS).filter(key => !have.has(key) && !(written && key.startsWith('r:')))
-  const took: string[] = []
-  for (const key of missing) {
-    try {
-      await setKey($, key)
-      took.push(key)
-    } catch {
-      return took
-    }
-  }
-  legacyPending = false
-  return took
 }
 
 // The language: the setting, else Claude Code's own `language`, else the locale.
@@ -587,70 +317,40 @@ async function crown($: any, hit?: Shown): Promise<void> {
   toast($, glossLine(CROWN_TOAST), CROWN_MS)
 }
 
-// Adds the hits to the game, to this copy's progress and to the collection,
-// then shows and plays what they earned: the popup and a hit sound, or a
-// burst or the crown with the hit beside it. The rank it climbs from, and the
-// coronations its bursts make, are every session's, as the store holds it now
-// (the game's own, while the store cannot be read yet). Runs inside `serially`.
+// Adds the hits to the game and to the collection, then shows and plays what
+// they earned: the popup and a hit sound, or a burst or the crown with the
+// hit beside it. Runs inside `serially`.
 async function award($: any, hits: readonly Hit[], by: By): Promise<void> {
   const points = Math.min(16, hits.reduce((sum, hit) => sum + hit.points, 0))
   if (points <= 0) return
-  await refresh($)
   const now = Date.now()
   const items = hits.map(hit => logItem(hit.label, hit.points, by, now))
-  const before = standing()
-  const legacy = ledger.copies.get(LEGACY_COPY)
-  const crownsBefore = coronations(before, legacy)
+  const ids = [...new Set(hits.map(hit => hit.id))].filter(id => KNOWN_IDS.has(id))
   const grow = (x: Game) => {
-    const result = applyPoints({ ...x, rank: joined ? rankOf(before) : x.rank }, points)
-    const made = joined ? coronations(add(before, { bursts: result.bursts }), legacy) - crownsBefore : crownsFrom(x.rank, result.bursts)
-    return { result, made, game: { ...remember(result.game, items), crownPending: x.crownPending || (made > 0 && infectOn()) } }
+    const result = applyPoints(x, points)
+    const fresh = ids.filter(id => !x.found.includes(id))
+    const found = [...x.found, ...fresh]
+    return { result, fresh, game: { ...remember(result.game, items), found, crownPending: x.crownPending || (result.crowns > 0 && infectOn()) } }
   }
   // The game moves on from what it holds at the write, not from an earlier read.
   let from = 0
-  let { result: out, made, game: next } = grow(initialGame())
+  let { result: out, fresh, game: next } = grow(initialGame())
   try {
-    await update($, game, x => {
+    await updateGame($, x => {
       from = x.energy
-      ;({ result: out, made, game: next } = grow(x))
+      ;({ result: out, fresh, game: next } = grow(x))
       return next
     })
   } catch { /* no host state here: as if the game had just begun */ }
-  mine = add(mine, { points, bursts: out.bursts, crowns: made })
-  const fresh = [...new Set(hits.map(hit => hit.id))].filter(id => KNOWN_IDS.has(id) && !ledger.found.has(id))
-  for (const id of fresh) {
-    ledger.found.add(id)
-    unsavedFinds.add(id)
-  }
-  await save($)
-  // A burst here may be the one that reached #1 together with another
-  // session's, each counted from a reading before the other's: a fresh reading
-  // says whether a coronation is owed, and this copy plays it. A session that
-  // did not burst never plays one. When the reading fails, the next burst
-  // (here or in any session, at #1 by then) plays what is owed.
-  if (out.bursts > 0) {
-    const read = await refresh($)
-    const owed = read ? crownsOwed(new Map(ledger.copies).set(COPY, mine)) : 0
-    if (owed > 0) {
-      mine = add(mine, { crowns: owed })
-      made += owed
-      try {
-        await update($, game, x => ({ ...x, crownPending: x.crownPending || infectOn() }))
-      } catch { /* no host state here */ }
-      await save($)
-    }
-    next = await readGame($)
-  }
-  // The game's write drew before the tallies changed: draw again with them.
-  try { $.ui.invalidate('ui.render') } catch { /* headless */ }
   status($, next)
   const memes = [...hits].sort((a, b) => b.points - a.points).map(hit => hit.id)
   const shown: Shown = { text: popText(hits, by, fresh.length > 0, glossMeme), from }
-  if (made > 0) {
+  if (out.crowns > 0) {
     await crown($, shown)
     sound($, 'crown', memes, next.muted)
   } else if (out.bursts > 0) {
-    await burst($, before.bursts + out.bursts - 1, shown)
+    // The chants and the pictures take turns over the session's bursts.
+    await burst($, next.bursts - 1, shown)
     sound($, 'burst', memes, next.muted)
   } else {
     await showPop($, { ...shown, until: now + POP_MS })
@@ -658,14 +358,14 @@ async function award($: any, hits: readonly Hit[], by: By): Promise<void> {
   }
 }
 
-// A sin is the session's own: the panel and /inmu count this session's.
-// Runs inside `serially`.
+// A tool call that errored or was refused: the first sin and every fifth
+// speak. Runs inside `serially`.
 async function sin($: any): Promise<void> {
   // The count as written: a read after the write could see this dispatch's earlier moment.
   let sins = 0
   let muted = false
   try {
-    await update($, game, x => {
+    await updateGame($, x => {
       sins = x.sins + 1
       muted = x.muted
       return { ...x, sins }
@@ -681,50 +381,41 @@ async function sin($: any): Promise<void> {
 
 // The main loop's turn ended. The reply that started with the coronation
 // section spends it once answered; one cut short leaves it for the next. Any
-// other answered reply counts at half points. Every answered turn reads the
-// store, so the band keeps up with the other sessions. Runs inside `serially`.
+// other answered reply counts at half points. Runs inside `serially`.
 async function endTurn($: any, reason: string, answer: unknown, carried: boolean): Promise<void> {
   if (reason !== 'answer') return
   if (carried) {
     let spent = false
     try {
-      await update($, game, x => {
+      await updateGame($, x => {
         spent = x.crownPending
         return { ...x, crownPending: false }
       })
     } catch { /* no host state here */ }
-    if (spent) {
-      await refresh($)
-      return
-    }
+    if (spent) return
   }
-  const found = claudeCounts() && typeof answer === 'string' ? detect(answer, 0.5) : null
-  if (found !== null && found.points > 0) await award($, found.hits, 'claude')
-  else await refresh($)
+  if (!claudeCounts() || typeof answer !== 'string') return
+  const found = detect(answer, 0.5)
+  if (found.points > 0) await award($, found.hits, 'claude')
 }
 
-// A crown the calendar gives (August 10): every session's chart goes to #1,
-// through the day's one record (`day<year>`), which any session that day may
-// write; a reading takes the smallest lift of them (ledger.ts). The lift
-// reaches #1 from the chart without any day's lift, or goes one rank past #1
-// when the chart is there already, so the day makes one coronation. No burst,
-// and the letters stay as they are. Runs inside `serially`, after a reading.
+// A crown the calendar gives (August 10): the session goes to #1, counted as
+// a coronation, once a year (a hot reload keeps the year). No burst, and the
+// letters stay as they are. Runs inside `serially`.
 async function forceCrown($: any, year: number): Promise<void> {
-  const legacy = ledger.copies.get(LEGACY_COPY)
-  const before = coronations(standing(), legacy)
-  const lift = liftToTop(new Map(ledger.copies).set(COPY, mine))
-  unsavedDay = { key: progressKey(mineGen, dayCopy(year), { ...NO_PROGRESS, lift }), gen: mineGen }
-  // The save writes the day's record, or keeps it pending; the reading counts it either way.
-  await save($)
-  if (!(await refresh($))) ledger.copies.set(dayCopy(year), { ...NO_PROGRESS, lift })
-  mine = add(mine, { crowns: Math.max(0, coronations(standing(), legacy) - before) })
-  const rank = rankOf(standing())
-  let next: Game = { ...initialGame(rank), crownPending: infectOn() }
+  let crowned = false
+  let next: Game = initialGame(RANK_TOP)
   try {
-    await update($, game, x => (next = { ...x, rank, crownPending: x.crownPending || infectOn() }))
-  } catch { /* no host state here */ }
-  await save($)
-  try { $.ui.invalidate('ui.render') } catch { /* headless */ }
+    await updateGame($, x => {
+      crowned = x.crownYear !== year
+      next = crowned ? { ...x, rank: RANK_TOP, crowns: x.crowns + 1, crownYear: year, crownPending: x.crownPending || infectOn() } : x
+      return next
+    })
+  } catch {
+    return
+  }
+  if (!crowned) return
+  toast($, glossLine(YAJUU_DAY_LINE), 6000)
   status($, next)
   await crown($)
   sound($, 'crown', [], next.muted)
@@ -747,56 +438,25 @@ async function demoCrown($: any): Promise<void> {
 // Runs inside `serially`.
 async function setMuted($: any, muted: boolean): Promise<void> {
   try {
-    await update($, game, g => ({ ...g, muted }))
+    await updateGame($, g => ({ ...g, muted }))
   } catch { /* no host state here */ }
 }
 
-// Back to #20 with the letters dark, for every session: a reset key starts a
-// generation newer than any this copy has seen, and every other copy follows
-// it at its next reading. The collection stays unless `all`; the session's
-// mute stays as it is. False when the store did not take the reset: nothing
-// changes then. Runs inside `serially`; `reset` sweeps the old keys after.
-async function resetAll($: any, all: boolean): Promise<boolean> {
-  await refresh($)
-  const gen = nextResetMs(await clockNow($), Math.max(ledger.gen, mineGen))
-  try {
-    await setKey($, resetKey(all, gen))
-  } catch {
-    return false
-  }
+// Back to #20 with the letters dark; the collection stays unless `all`, and
+// so do the session's mute and the clock memes' days (a reset does not pay
+// them out again). Runs inside `serially`.
+async function resetAll($: any, all: boolean): Promise<void> {
   stopAnim()
   fxTimer?.cancel()
   popTimer?.cancel()
   mounted = null
-  if (all) unsavedFinds.clear()
-  // The old store and August 10's lift belong to the generation that ended.
-  legacyPending = false
-  unsavedDay = null
-  ledger = { gen, foundGen: all ? gen : ledger.foundGen, copies: new Map(), found: all ? new Set() : ledger.found }
-  mineGen = gen
-  mine = NO_PROGRESS
   let fresh = initialGame()
   try {
     await update($, fx, () => null)
     await update($, pop, () => null)
-    await update($, game, x => (fresh = { ...initialGame(), muted: x.muted }))
+    await updateGame($, x => (fresh = { ...initialGame(), muted: x.muted, found: all ? [] : x.found, clockDay: x.clockDay, crownYear: x.crownYear }))
   } catch { /* no host state here */ }
-  // Nothing of the old generation is left to save; the finds not written yet are.
-  await save($)
   status($, fresh)
-  return true
-}
-
-// A reset the person asked for, then a sweep of the keys it left stale.
-async function reset($: any, all: boolean): Promise<boolean> {
-  const done = await serially(() => resetAll($, all))
-  if (done) void sweep($)
-  return done
-}
-
-// The panel's reset button: the same reset, and a toast when the store did not take it.
-async function resetFromPane($: any): Promise<void> {
-  if (!(await reset($, false))) toast($, s.resetFailed)
 }
 
 async function openPane($: any): Promise<boolean> {
@@ -811,10 +471,9 @@ async function openPane($: any): Promise<boolean> {
 
 async function statusText($: any): Promise<string> {
   const g = await readGame($)
-  const t = standing()
   return [
     s.standing(g.rank, glossLine(titleFor(g.rank)), lettersLine(g.energy), g.energy),
-    s.tallies(crownCount(), t.points, g.sins, foundCount(), LEXICON.length, s.sound(g.muted, soundOn())),
+    s.tallies(g.crowns, g.points, g.sins, foundCount(g), LEXICON.length, s.sound(g.muted, soundOn())),
     g.log.length > 0 ? s.recent(g.log.slice(0, 5).map(item => `${item.label}+${item.points}`)) : s.noMemesYet,
   ].join('\n')
 }
@@ -832,37 +491,32 @@ function soundsReport(): string {
   return lines.join('\n')
 }
 
-// 11:45:14, once a day: three points and a toast.
+// 11:45:14, once a day in a session: three points and a toast.
 const isClockTime = (d: Date) => d.getHours() === 11 && d.getMinutes() === 45 && d.getSeconds() >= 14 && d.getSeconds() <= 16
 
-// Runs inside `serially`.
+// Runs inside `serially`, every second.
 async function tick($: any): Promise<void> {
-  const d = new Date()
+  const d = new Date(await clockNow($))
   if (!isClockTime(d)) return
   const day = d.toDateString()
+  let due = false
   try {
-    if ((await $.store.get(CLOCK_DAY_KEY)) === day) return
-    await $.store.set(CLOCK_DAY_KEY, day)
-  } catch { /* no store here */ }
+    await updateGame($, x => {
+      due = x.clockDay !== day
+      return due ? { ...x, clockDay: day } : x
+    })
+  } catch {
+    return
+  }
+  if (!due) return
   toast($, glossLine(TIME_LINE))
   await award($, [{ id: 'time', label: '11:45:14', points: 3 }], 'clock')
 }
 
-// August 10, once a year: the chart goes to #1 for every session. It takes a
-// reading of the store and the year's mark in it; without them the day waits
-// for the next session's start. Runs inside `serially`.
+// August 10: the session starts crowned. Runs inside `serially`.
 async function yajuuDay($: any): Promise<void> {
   const d = new Date(await clockNow($))
-  if (d.getMonth() !== 7 || d.getDate() !== 10 || !joined) return
-  const year = d.getFullYear()
-  try {
-    if ((await $.store.get(YAJUU_YEAR_KEY)) === year) return
-    await setKey($, YAJUU_YEAR_KEY, year)
-  } catch {
-    return
-  }
-  toast($, glossLine(YAJUU_DAY_LINE), 6000)
-  await forceCrown($, year)
+  if (d.getMonth() === 7 && d.getDate() === 10) await forceCrown($, d.getFullYear())
 }
 
 // The burst's or the coronation's picture where the surface draws cells and
@@ -907,39 +561,18 @@ export const register: Register = (on, options) => {
     try {
       bandHiddenNow = await read($, bandHidden)
     } catch { /* no host state here */ }
-    // A reload leaves no timer behind, so whatever the band was showing goes;
-    // a save the copy before it left pending is that copy's, and its record
-    // in the store is as far as it got.
+    // A reload leaves no timer behind, so whatever the band was showing goes.
     try {
       await update($, fx, () => null)
       await update($, pop, () => null)
-      await update($, unsavedShown, () => false)
     } catch { /* no host state here */ }
-    startedAt = await clockNow($)
-    // The first reading: it carries the old store over and joins the generation.
-    await serially(() => refresh($))
     await $.command.register({ name: 'inmu', description: s.commandDescription, argumentHint: VERBS })
     await isWindows($)
     await scanSounds($)
     status($, await readGame($))
     clockTimer?.cancel()
-    clockTimer = $.clock.every(1000, () => {
-      if (isClockTime(new Date())) void serially(() => tick($))
-    })
+    clockTimer = $.clock.every(1000, () => { void serially(() => tick($)) })
     await serially(() => yajuuDay($))
-    void sweep($)
-    return next(e)
-  })
-
-  // The session ends: a save still pending gets one more try.
-  on('session.end', async ($, e, next) => {
-    if (unsaved) {
-      try {
-        await serially(() => refresh($))
-      } catch { /* the session ends as it would */ }
-    }
-    retryTimer?.cancel()
-    retryTimer = null
     return next(e)
   })
 
@@ -1025,7 +658,6 @@ export const register: Register = (on, options) => {
       case '':
       case 'status':
       case 'panel': {
-        await serially(() => refresh($))
         const opened = await openPane($)
         return { text: `${await statusText($)}${opened ? `\n${s.panelOpened}` : ''}` }
       }
@@ -1044,7 +676,7 @@ export const register: Register = (on, options) => {
         return { text: verb === 'mute' ? s.muted : s.unmuted }
       case 'reset': {
         const all = tail.toLowerCase() === 'all'
-        if (!(await reset($, all))) return { text: s.resetFailed }
+        await serially(() => resetAll($, all))
         return { text: all ? s.resetAll : s.reset }
       }
       case 'band': {
@@ -1070,24 +702,22 @@ export const register: Register = (on, options) => {
   })
 
   // The band: the letters in rainbow (the ones a hit just lit drawn inverse),
-  // the hit beside them, the rank and the title with its meaning, and 未存
-  // while a save is pending. A burst or the coronation shows its chant and
-  // picture under the hit that set it off, every letter lit for the show
-  // alone: the letters come back as the game holds them. A band another mod
-  // draws stays under it; the feedback survey takes the whole band.
+  // the hit beside them, the rank and the title with its meaning. A burst or
+  // the coronation shows its chant and picture under the hit that set it off,
+  // every letter lit for the show alone: the letters come back as the game
+  // holds them. A band another mod draws stays under it; the feedback survey
+  // takes the whole band.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     bandRequestId = e.requestId
     let g = initialGame()
     let effect: Fx | null = null
     let popped: Pop | null = null
     let hidden = false
-    let pending = false
     try {
-      g = await read($, game)
+      g = toGame(await read($, game))
       effect = await read($, fx)
       popped = await read($, pop)
       hidden = await read($, bandHidden)
-      pending = await read($, unsavedShown)
     } catch { /* no host state: draw what the module knows */ }
     if (e.props.hasSurvey || !bandOn() || hidden) return next(e)
     const { Box, Button, Text } = $.ui.resolve(e)
@@ -1127,7 +757,6 @@ export const register: Register = (on, options) => {
           <Text dimColor wrap="truncate-end">{`#${g.rank} ${title}`}</Text>
           {titleMeaning !== '' && <Text dimColor wrap="truncate-end">{titleMeaning}</Text>}
           {g.rank === RANK_TOP && <Text color="yellow">👑</Text>}
-          {pending && <Text dimColor>{s.unsaved}</Text>}
           <Button key="pane" label={s.bandButton} hotkey="i" plain dimColor onPress={() => openPane($)} />
         </Box>
       )
@@ -1142,15 +771,14 @@ export const register: Register = (on, options) => {
   // with each found meme's meaning, the last hits, and buttons.
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const g = await readGame($)
-    const t = standing()
     const { Box, Button, Text } = $.ui.resolve(e)
-    const shown = (entry: Entry) => (ledger.found.has(entry.id) ? glossed(lang, entry.label, memeMeaning(lang, entry.id)) : '???')
+    const shown = (entry: Entry) => (g.found.includes(entry.id) ? glossed(lang, entry.label, memeMeaning(lang, entry.id)) : '???')
     return (
       <Box flexDirection="column">
         <Text bold color="yellow">{`淫夢の王 INMU KING · #${g.rank} ${glossLine(titleFor(g.rank))}`}</Text>
         <Text>{`${lettersLine(g.energy)}  (${g.energy}/8)`}</Text>
-        <Text dimColor>{s.paneTallies(crownCount(), t.points, g.sins, g.muted)}</Text>
-        <Text bold>{s.collection(foundCount(), LEXICON.length)}</Text>
+        <Text dimColor>{s.paneTallies(g.crowns, g.points, g.sins, g.muted)}</Text>
+        <Text bold>{s.collection(foundCount(g), LEXICON.length)}</Text>
         {TIERS.map(points => (
           <Text key={`tier-${points}`} wrap="wrap">{s.tier(points, LEXICON.filter(entry => entry.points === points).map(shown).join('  '))}</Text>
         ))}
@@ -1159,7 +787,7 @@ export const register: Register = (on, options) => {
         </Text>
         <Box columnGap={2}>
           <Button key="mute" label={s.muteButton(g.muted)} hotkey="1" plain onPress={() => serially(() => setMuted($, !g.muted))} />
-          <Button key="reset" label={s.resetButton} hotkey="2" plain onPress={() => resetFromPane($)} />
+          <Button key="reset" label={s.resetButton} hotkey="2" plain onPress={() => serially(() => resetAll($, false))} />
           <Button key="close" label={s.closeButton} hotkey="0" plain dimColor onPress={() => $.ui.close({ id: PANE })} />
         </Box>
       </Box>

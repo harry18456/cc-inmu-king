@@ -1,9 +1,0 @@
-{
-  "name": "inmu-store-check",
-  "version": "0.0.0",
-  "description": "A test helper for inmu-king, not a mod to install: /storecheck writes, counts and clears keys of its own plugin store, so tools/store_check.py can run two sessions against one store.",
-  "author": {
-    "name": "Harry",
-    "url": "https://github.com/harry18456"
-  }
-}

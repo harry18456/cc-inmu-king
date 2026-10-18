@@ -1,8 +1,18 @@
 import { test, expect } from 'claude-code/testing'
 import {
-  FULL, LETTERS, LETTER_COLORS, RANK_START, RANK_TOP, applyPoints, artFor, chantFor, initialGame, initialStats, letterStates,
-  lettersLine, logItem, popText, remember, sinLine, sinSpeaks, titleFor, toStats,
+  FULL, LETTERS, LETTER_COLORS, RANK_START, RANK_TOP, applyPoints, artFor, chantFor, initialGame, letterStates,
+  lettersLine, logItem, popText, remember, sinLine, sinSpeaks, titleFor, toGame,
 } from './game.ts'
+
+test("a game an older version left in the host state starts over, keeping only the mute", async () => {
+  // 0.4.0's game: its rank came from every session, and it kept no points of its own.
+  expect(toGame({ energy: 3, rank: 5, sins: 2, muted: true, crownPending: false, log: [] })).toEqual({ ...initialGame(), muted: true })
+  expect(toGame(undefined)).toEqual(initialGame())
+  const mangled = toGame({ ...initialGame(7), found: 'iiyo', log: null })
+  expect(mangled.rank).toBe(7)
+  expect(mangled.found).toEqual([])
+  expect(mangled.log).toEqual([])
+})
 
 test('points light letters; a full bar empties them and climbs one rank', async () => {
   const two = applyPoints(initialGame(), 2)
@@ -14,7 +24,8 @@ test('points light letters; a full bar empties them and climbs one rank', async 
   expect(full.game.energy).toBe(0)
   expect(full.game.rank).toBe(RANK_START - 1)
   expect(full.bursts).toBe(1)
-  expect(full.crowned).toBe(false)
+  expect(full.crowns).toBe(0)
+  expect(full.game.points).toBe(FULL)
 })
 
 test('sixteen points are two bursts and two ranks; the rest carries over', async () => {
@@ -24,13 +35,16 @@ test('sixteen points are two bursts and two ranks; the rest carries over', async
   expect(out.game.energy).toBe(1)
 })
 
-test('the climb that reaches #1 is the coronation, and a full bar at #1 crowns again', async () => {
+test('the climb that reaches #1 is a coronation, and so is every full bar at #1; the game counts them', async () => {
   const atTwo = applyPoints(initialGame(2), FULL)
   expect(atTwo.game.rank).toBe(RANK_TOP)
-  expect(atTwo.crowned).toBe(true)
+  expect(atTwo.crowns).toBe(1)
   const again = applyPoints(atTwo.game, FULL)
   expect(again.game.rank).toBe(RANK_TOP)
-  expect(again.crowned).toBe(true)
+  expect(again.crowns).toBe(1)
+  expect(again.game.crowns).toBe(2)
+  expect(applyPoints(initialGame(2), 2 * FULL).crowns).toBe(2)
+  expect(applyPoints(initialGame(3), 2 * FULL).crowns).toBe(1)
 })
 
 test('zero or negative points change nothing', async () => {
@@ -94,13 +108,4 @@ test('chants, pictures and sin lines rotate; sins speak first, then every fifth'
   expect(sinSpeaks(1)).toBe(true)
   expect(sinSpeaks(2)).toBe(false)
   expect(sinSpeaks(5)).toBe(true)
-})
-
-test('the old stats read whatever the store holds, the 0.1.0 layout included', async () => {
-  expect(toStats(undefined)).toEqual({ rank: 20, bestRank: 20, totalPoints: 0, coronations: 0, sins: 0, bursts: 0, found: {}, epoch: 0 })
-  expect(toStats({ rank: 14, bestRank: 14, totalPoints: 51, bursts: 6 })).toEqual({ rank: 14, bestRank: 14, totalPoints: 51, coronations: 0, sins: 0, bursts: 6, found: {}, epoch: 0 })
-  expect(toStats({ rank: 99, bestRank: 'x', found: { iiyo: 2, bad: -1 } })).toEqual({ rank: 20, bestRank: 20, totalPoints: 0, coronations: 0, sins: 0, bursts: 0, found: { iiyo: 2 }, epoch: 0 })
-  expect(toStats({ rank: 5, bestRank: 9 }).bestRank).toBe(5)
-  expect(toStats({ epoch: 3 }).epoch).toBe(3)
-  expect(initialStats(4).epoch).toBe(4)
 })

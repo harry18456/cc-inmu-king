@@ -1,6 +1,5 @@
-# Written by the engine when the mod loads (hot reload / --plugin-dir), here
-# and in the store-check helper
-**/.claude-plugin/types/
+# Written by the engine when the mod loads (hot reload / --plugin-dir)
+.claude-plugin/types/
 .claude/
 
 # Windows

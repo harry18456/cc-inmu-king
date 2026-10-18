@@ -15,34 +15,46 @@ export const LOG_MAX = 12
 export const initialGame = (rank = RANK_START): Game => ({
   energy: 0,
   rank,
+  points: 0,
+  bursts: 0,
+  crowns: 0,
   sins: 0,
+  found: [],
   muted: false,
   crownPending: false,
   log: [],
+  clockDay: '',
+  crownYear: 0,
 })
 
-export type Outcome = { game: Game; bursts: number; crowned: boolean }
+// A game as the host state holds it. A hot reload keeps the state, not the
+// shape: an older version's game (0.4.0's took its rank from every session,
+// and kept no points of its own) starts over, keeping only the mute.
+export function toGame(raw: unknown): Game {
+  if (typeof raw !== 'object' || raw === null) return initialGame()
+  const g = raw as Partial<Game>
+  if (typeof g.points !== 'number') return { ...initialGame(), muted: g.muted === true }
+  return { ...initialGame(), ...g, found: Array.isArray(g.found) ? g.found : [], log: Array.isArray(g.log) ? g.log : [] }
+}
+
+export type Outcome = { game: Game; bursts: number; crowns: number }
 
 // Adds points. Every full bar empties the letters and climbs one rank; the
-// climb that reaches #1 is the coronation, and every full bar while at #1
-// crowns again.
+// climb that reaches #1 is a coronation, and so is every full bar while at
+// #1. The game keeps the count of the points, the bursts and the coronations.
 export function applyPoints(game: Game, points: number): Outcome {
-  if (!(points > 0)) return { game, bursts: 0, crowned: false }
+  if (!(points > 0)) return { game, bursts: 0, crowns: 0 }
   let energy = game.energy + points
   let rank = game.rank
   let bursts = 0
-  let crowned = false
+  let crowns = 0
   while (energy >= FULL) {
     energy -= FULL
     bursts += 1
-    if (rank > RANK_TOP) {
-      rank -= 1
-      if (rank === RANK_TOP) crowned = true
-    } else {
-      crowned = true
-    }
+    if (rank > RANK_TOP) rank -= 1
+    if (rank === RANK_TOP) crowns += 1
   }
-  return { game: { ...game, energy, rank }, bursts, crowned }
+  return { game: { ...game, energy, rank, points: game.points + points, bursts: game.bursts + bursts, crowns: game.crowns + crowns }, bursts, crowns }
 }
 
 export function remember(game: Game, items: readonly LogItem[]): Game {
@@ -121,57 +133,4 @@ export function popText<H extends PopHit>(hits: readonly H[], by: By, isNew: boo
   const top = [...hits].sort((a, b) => b.points - a.points)
   const shown = top.slice(0, 2).map(name).join('・') + (top.length > 2 ? '…' : '')
   return `${by === 'claude' ? 'Claude ' : ''}+${total} ${shown}${isNew ? ' NEW!' : ''}`
-}
-
-// What 0.3.0's store kept across sessions, in one key (`epoch` counted its
-// resets). ledger.ts carries it over into its own keys.
-export type Stats = {
-  rank: number
-  bestRank: number
-  totalPoints: number
-  coronations: number
-  sins: number
-  bursts: number
-  found: Record<string, number>
-  epoch: number
-}
-
-export const initialStats = (epoch = 0): Stats => ({
-  rank: RANK_START,
-  bestRank: RANK_START,
-  totalPoints: 0,
-  coronations: 0,
-  sins: 0,
-  bursts: 0,
-  found: {},
-  epoch,
-})
-
-const whole = (v: unknown, fallback: number, min = 0, max = Number.MAX_SAFE_INTEGER): number =>
-  typeof v === 'number' && Number.isFinite(v) ? Math.max(min, Math.min(max, Math.floor(v))) : fallback
-
-// Reads what the store holds into Stats, filling what is missing. Takes the
-// 0.1.0 layout too (one key per number), which has no `found`.
-export function toStats(raw: unknown): Stats {
-  const base = initialStats()
-  if (typeof raw !== 'object' || raw === null) return base
-  const r = raw as Record<string, unknown>
-  const found: Record<string, number> = {}
-  if (typeof r.found === 'object' && r.found !== null) {
-    for (const [id, count] of Object.entries(r.found as Record<string, unknown>)) {
-      const n = whole(count, 0)
-      if (n > 0) found[id] = n
-    }
-  }
-  const rank = whole(r.rank, base.rank, RANK_TOP, RANK_START)
-  return {
-    rank,
-    bestRank: Math.min(rank, whole(r.bestRank, base.bestRank, RANK_TOP, RANK_START)),
-    totalPoints: whole(r.totalPoints, 0),
-    coronations: whole(r.coronations, 0),
-    sins: whole(r.sins, 0),
-    bursts: whole(r.bursts, 0),
-    found,
-    epoch: whole(r.epoch, 0),
-  }
 }

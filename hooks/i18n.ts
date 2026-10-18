@@ -191,7 +191,6 @@ export type Strings = {
   unmuted: string
   reset: string
   resetAll: string
-  resetFailed: string
   bandUsage: string
   bandShown: string
   bandHidden: string
@@ -218,9 +217,6 @@ export type Strings = {
   // the band and the toasts
   bandButton: string
   sinToast: (line: string, sins: number) => string
-  // a save the store has not taken yet: the band's mark, and the toast
-  unsaved: string
-  saveFailed: string
   // the line that closes a turn, its numbers written as 114514 arithmetic
   turnLine: (word: string, seconds: string, tokens: string | null) => string
 }
@@ -242,9 +238,8 @@ const en: Strings = {
   demoCrown: 'A demo coronation: no rank change, and the next reply stays as it is.',
   muted: 'Muted.',
   unmuted: 'Sound on.',
-  reset: 'Reset, in every session: #20, letters dark, tallies cleared. The collection stays; /inmu reset all clears it too.',
-  resetAll: 'Reset everything, in every session: #20, letters dark, tallies and the collection cleared.',
-  resetFailed: 'The plugin store did not take the reset, so nothing changed. Try again.',
+  reset: 'Reset: #20, letters dark, tallies cleared. The collection stays; /inmu reset all clears it too.',
+  resetAll: 'Reset everything: #20, letters dark, tallies and the collection cleared.',
   bandUsage: 'Usage: /inmu band on|off',
   bandShown: 'Band shown.',
   bandHidden: 'Band hidden (/inmu band on brings it back).',
@@ -268,8 +263,6 @@ const en: Strings = {
   closeButton: 'Close',
   bandButton: 'panel',
   sinToast: (line, sins) => `${line} · sin ${sins}`,
-  unsaved: 'unsaved',
-  saveFailed: 'Could not save to the plugin store. Trying again every 15 s; the band says unsaved until a save lands.',
   turnLine: (word, seconds, tokens) => `${word} for ${seconds} s${tokens === null ? '' : ` · ${tokens} tokens out`}`,
 }
 
@@ -290,9 +283,8 @@ const zhTW: Strings = {
   demoCrown: '示範加冕：不改排名，下一則回覆也照常。',
   muted: '靜音。',
   unmuted: '聲音開。',
-  reset: '歸零，每個 session 都一起：#20、字母全暗、累計清空。梗圖鑑保留；/inmu reset all 連圖鑑一起清。',
-  resetAll: '全部歸零，每個 session 都一起：#20、字母全暗、累計與梗圖鑑清空。',
-  resetFailed: '歸零沒寫進存檔，所以什麼都沒改。請再試一次。',
+  reset: '歸零：#20、字母全暗、累計清空。梗圖鑑保留；/inmu reset all 連圖鑑一起清。',
+  resetAll: '全部歸零：#20、字母全暗、累計與梗圖鑑清空。',
   bandUsage: '用法：/inmu band on|off',
   bandShown: 'band 顯示。',
   bandHidden: 'band 隱藏（/inmu band on 恢復）。',
@@ -316,8 +308,6 @@ const zhTW: Strings = {
   closeButton: '關閉',
   bandButton: '面板',
   sinToast: (line, sins) => `${line} · 罪 ${sins}`,
-  unsaved: '未存',
-  saveFailed: '存檔寫不進去，每 15 秒重試一次；寫進去之前，band 會顯示「未存」。',
   turnLine: (word, seconds, tokens) => `${word} ${seconds} 秒${tokens === null ? '' : ` · 輸出 ${tokens} tokens`}`,
 }
 

@@ -36,8 +36,8 @@ Lit letters wear a rainbow, dark ones are gray, and the letters a hit just lit a
 - Full-width digits and half-width kana count the same: `１１４５１４`, `ｲｷｽｷﾞ`. A meme in parts may have spaces or punctuation between the parts: `いいよ、来いよ`, `いいよ・こいよ`, `見ろよ 見ろよ`. Everyday Japanese does not count: `サインアップ`, `ファッション`, a plain やりますね without the ぇ.
 - Each meme counts once per text; one text lights at most two bars, 16 points.
 - Claude's own replies count at half points, rounded up; an interrupted reply and a subagent's do not. A setting turns that off.
-- A tool call that errors or is refused is a *sin*: the first one and every fifth toast a line and play a sigh. Sins count per session.
-- Every session plays one chart: the points of all of them add up, and the bursts of each climb it.
+- A tool call that errors or is refused is a *sin*: the first one and every fifth toast a line and play a sigh.
+- Every session plays a game of its own. It starts at #20 (crowned on August 10), its points, coronations and collection last as long as the session (a hot reload or a settings change keeps them), and the next session starts over.
 
 ## The title ladder
 
@@ -54,7 +54,7 @@ From #10 the spinner's word becomes ンアッー, やりますねぇ and friends
 
 ## The collection
 
-A meme goes into the collection the first time it is typed, and its popup says `NEW!`. The panel lists all 33 in five rows by points, each found one with its meaning, the ones not found yet as `???`. The collection outlives the session; `/inmu reset` keeps it and `/inmu reset all` clears it.
+A meme goes into the collection the first time it is typed, and its popup says `NEW!`. The panel lists all 33 in five rows by points, each found one with its meaning, the ones not found yet as `???`. The collection lasts as long as the session; `/inmu reset` keeps it and `/inmu reset all` clears it.
 
 ## Language
 
@@ -93,8 +93,8 @@ or the folder *Your sound folder* names in `/config`.
 
 ## Clock memes
 
-- **11:45:14** every day: three points and a 淫夢時間 toast.
-- **August 10**, 野獣の日: the first session that day crowns the chart, #1 for every session, counted as one coronation. It needs to read the store; when it cannot, the next session start that day tries again.
+- **11:45:14** every day: three points and a 淫夢時間 toast, once a day in each session that is open then.
+- **August 10**, 野獣の日: every session that day starts crowned.
 
 ## Commands
 
@@ -104,7 +104,7 @@ or the folder *Your sound folder* names in `/config`.
 /inmu king         a demo coronation: the show and the sound, no rank, no infection
 /inmu sounds       scan your sound folder again and list it
 /inmu mute|unmute  silence this session / sound back on
-/inmu reset        back to #20, letters dark, tallies cleared, in every session; the collection stays
+/inmu reset        back to #20, letters dark, tallies cleared; the collection stays
 /inmu reset all    the collection too
 /inmu band on|off  show / hide the band (hidden, the standing goes to the status line)
 /inmu homo 1919    write a number as 114514 arithmetic
@@ -139,25 +139,19 @@ claude --plugin-dir <path to this repo>
 ## Development
 
 ```
-claude plugin test .           # 160 tests, no network
+claude plugin test .           # 111 tests, no network
 claude plugin validate .
-uv run tools/store_check.py    # two headless sessions write one plugin store at once; no model call
 ```
 
 `tsc` needs the types Claude Code writes into `.claude-plugin/types/` when it loads the mod (git ignores them): run `claude --plugin-dir .` once and exit, then `npx -p typescript tsc --noEmit -p .`.
 
-A session that loads the mod twice runs two copies, and each counts every hit. That happens when a hot reload adds the mod to a session that loaded it at its start: restart the session instead.
+A session that loads the mod twice runs two copies, each with a game of its own, and two bands. That happens when a hot reload adds the mod to a session that loaded it at its start: restart the session instead.
 
 ## What it does and does not do
 
 - It matches strings in the prompts you submit and in Claude's replies. It never rewrites a prompt, calls the network or calls a model.
 - The one thing that reaches the model is the coronation section, and it can be turned off.
-- The rank, the points, the coronations and the collection live in Claude Code's plugin store, so the next session carries on; the letters, the sins and the panel live in the session. Each session writes keys of its own and reads every session's ([`hooks/ledger.ts`](hooks/ledger.ts)), so no session writes over another. This rests on the store changing one key per write and keeping the rest, which `tools/store_check.py` checks on your Claude Code: on 2.1.302 two sessions wrote 400 keys each at once for 18 s, and the store took 786 writes, refused 14 and lost none.
-- A write the store refuses (another session holding its lock, a full store) is tried again at once, then every 15 s; meanwhile the band says 未存 and one toast says why. A session that cannot read the store at all keeps its hits unsaved until it can. Progress still unsaved when Claude Code exits is lost.
-- A reset reaches every session at its next hit, `/inmu` or reply. A hit already under way when another session resets may land before the reset, and goes with it.
-- Coronations count on the one chart: one for every burst that lands at #1, whichever session made it. When two sessions reach #1 together, the one whose burst may have done it plays the coronation once it reads the store again; when that reading fails, the next burst at #1, in any session, plays it. If both cross the line within the same few milliseconds, both may play it; it still counts once.
-- The store holds up to 4 MiB: about 80,000 progress records, one for each session that scored. A reset, and every session's start, deletes the old ones, up to 200 at a time. A store already full refuses the reset as well; deleting its file, `~/.claude/plugins/store/inmu-king*.json`, starts it over.
-- Upgrading from 0.3.0 carries its rank, points, coronations and collection over, once. A carry-over the store does not take yet is tried again like a save, and the band says 未存 until it lands. The sin count is not kept.
+- It saves nothing: the game lives in the session, and Claude Code's plugin store is never read or written. A save an earlier version left there (`~/.claude/plugins/store/inmu-king*.json`) stays as it is, unread; delete it if you like.
 - A band another mod draws stays under this one. While Claude Code shows its own feedback survey, the band steps aside.
 - On Windows a clip starts about a second after its event, played by PowerShell in the background, never holding a turn.
 - The pixel pictures draw in the terminal; Desktop shows the text alone.
