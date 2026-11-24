@@ -154,7 +154,7 @@ claude plugin test .           # 118 tests, no network
 claude plugin validate .
 ```
 
-`tsc` needs the types Claude Code writes into `.claude-plugin/types/` when it loads the mod (git ignores them): run `claude --plugin-dir .` once and exit, then `npx -p typescript tsc --noEmit -p .`.
+`tsc` needs the types Claude Code writes into `.claude-plugin/types/` when it loads the mod (git ignores them): run `claude --plugin-dir .` once and exit, then `tsc --noEmit -p .`.
 
 A session that loads the mod twice runs two copies, each with a game of its own, and two bands. That happens when a hot reload adds the mod to a session that loaded it at its start: restart the session instead.
 

@@ -156,7 +156,7 @@ claude plugin test .           # テスト 118 個、ネットワーク不要
 claude plugin validate .
 ```
 
-`tsc` には、Claude Code が mod を読み込むときに `.claude-plugin/types/` へ書き出す型が必要です（git では無視しています）。`claude --plugin-dir .` を一度起動して終了してから、`npx -p typescript tsc --noEmit -p .` を実行してください。
+`tsc` には、Claude Code が mod を読み込むときに `.claude-plugin/types/` へ書き出す型が必要です（git では無視しています）。`claude --plugin-dir .` を一度起動して終了してから、`tsc --noEmit -p .` を実行してください。
 
 同じセッションで mod を 2 回読み込むと、2 つのコピーがそれぞれ別のゲームを動かし、band も 2 本出ます。セッション開始時に読み込んだ mod を、ホットリロードでもう一度加えたときに起こります。その場合はホットリロードせず、セッションを再起動してください。
 

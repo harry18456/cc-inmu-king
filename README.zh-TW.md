@@ -155,7 +155,7 @@ claude plugin test .           # 118 個測試，不連網
 claude plugin validate .
 ```
 
-`tsc` 需要 Claude Code 載入 mod 時寫進 `.claude-plugin/types/` 的型別檔（git 不追蹤）：先跑一次 `claude --plugin-dir .` 再離開，然後 `npx -p typescript tsc --noEmit -p .`。
+`tsc` 需要 Claude Code 載入 mod 時寫進 `.claude-plugin/types/` 的型別檔（git 不追蹤）：先跑一次 `claude --plugin-dir .` 再離開，然後 `tsc --noEmit -p .`。
 
 同一個 session 載入兩次 mod 時，會有兩份同時在跑，各玩各的，也會畫出兩條 band。這發生在「session 開始時已經載入，之後又熱重載加進來」的情況；遇到時請重開 session，不要熱重載。
 
